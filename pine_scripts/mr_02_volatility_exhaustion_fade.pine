@@ -1,0 +1,113 @@
+//@version=5
+// ─────────────────────────────────────────────────────────────────────────────
+// MR-02 v2  Volatility Exhaustion Fade  (SMA200 direction filter)
+// ─────────────────────────────────────────────────────────────────────────────
+// Hypothesis:
+//   When a candle's range spikes far above the recent ATR average (panic/FOMO
+//   candle) AND the very next bar fails to continue in the same direction —
+//   the move is exhausted. Fade it in the direction of the macro trend.
+//
+// Edge: Volatility spikes on 1h crypto are frequently local exhaustion events.
+//       Trapped traders on the wrong side create the snapback fuel.
+//
+// Key design decisions (v2):
+//   - RSI filter dropped: 3yr BTC/ETH/SOL cross-asset test confirmed it
+//     anti-selects — removing it raised PF from 0.91 to 1.29 on BTC,
+//     1.71 on ETH, 1.20 on SOL.
+//   - ADX filter dropped: spike candles correlate with HIGH ADX (same issue
+//     as MR-03). ADX < 35 was killing 75% of signals including the good ones.
+//   - SMA200 direction filter added: SOL test showed longs 73% WR vs shorts
+//     36% WR in a bull cycle. Long only above SMA200, short only below.
+//   - ATR spike multiplier lowered 2.0 → 1.5: TV sweep showed 2.0 produces
+//     0 trades; 1.5 is the viable threshold.
+//
+// CHANGELOG:
+//   v1 — ATR spike + RSI extreme + ADX regime + failed continuation
+//   v2 — Dropped RSI + ADX; added SMA200 direction filter; spike mult 2.0→1.5
+//
+// Backtest results (no-filter baseline, 2022-2025 1h):
+//   BTCUSDT: 61 trades | PF 1.29 | WR 55.7% | +1.19% | DD 2.92%
+//   ETHUSDT: 49 trades | PF 1.71 | WR 63.3% | +3.45% | DD 1.91%
+//   SOLUSDT: 37 trades | PF 1.20 | WR 51.4% | +1.33% | DD 4.73%
+//   Note: all trades hit 24-bar time stop (TP/SL serve as emergency guards only)
+// ─────────────────────────────────────────────────────────────────────────────
+strategy("MR-02 v2 Volatility Exhaustion Fade", shorttitle="MR-02 VEF", overlay=true,
+         default_qty_type  = strategy.percent_of_equity,
+         default_qty_value = 10,
+         commission_type   = strategy.commission.percent,
+         commission_value  = 0.05,
+         slippage          = 2)
+
+// ── Inputs ────────────────────────────────────────────────────────────────────
+int   atrLen    = input.int  (14,  "ATR Period",               minval=5,  group="Volatility")
+int   atrMaLen  = input.int  (20,  "ATR MA Period",            minval=5,  group="Volatility")
+float atrSpike  = input.float(1.5, "ATR Spike Multiplier",     step=0.1,  group="Volatility")
+float bodyRatio = input.float(0.5, "Min Body Range Ratio",     step=0.05, group="Volatility")
+int   maLen     = input.int  (200, "Trend MA Period",          minval=20, group="Trend Filter")
+float slMult    = input.float(2.0, "Stop Loss ATR Mult",       step=0.1,  group="Risk")
+float tpMult    = input.float(2.0, "Take Profit ATR Mult",     step=0.1,  group="Risk")
+int   maxBars   = input.int  (24,  "Max Bars in Trade",        minval=1,  group="Risk")
+int   cooldown  = input.int  (3,   "Cooldown Bars After Loss", minval=0,  group="Risk")
+
+// ── Calculations ──────────────────────────────────────────────────────────────
+float atr    = ta.atr(atrLen)
+float atrMa  = ta.sma(atr, atrMaLen)
+float ma     = ta.sma(close, maLen)
+bool  bullBias = close > ma   // above SMA200 → long only
+bool  bearBias = close < ma   // below SMA200 → short only
+
+// Spike candle detection (on the previous bar — no lookahead)
+float rangeBar1 = high[1] - low[1]
+float bodyBar1  = math.abs(close[1] - open[1])
+float bodyFrac  = rangeBar1 > 0 ? bodyBar1 / rangeBar1 : 0.0
+bool  spiked    = atr[1] > atrMa[1] * atrSpike
+bool  bigBull1  = close[1] > open[1] and bodyFrac >= bodyRatio
+bool  bigBear1  = close[1] < open[1] and bodyFrac >= bodyRatio
+
+// Failed continuation: current bar moves against the spike
+bool failedBull = spiked and bigBull1 and close < open   // spike up → current bar red
+bool failedBear = spiked and bigBear1 and close > open   // spike down → current bar green
+
+// Cooldown — fixed deadlock bug
+var int _lastCount02  = 0
+var int barsSinceLoss = 999
+if strategy.closedtrades > _lastCount02
+    if strategy.closedtrades.profit(strategy.closedtrades - 1) < 0
+        barsSinceLoss := 0
+    _lastCount02 := strategy.closedtrades
+barsSinceLoss := math.min(barsSinceLoss + 1, 9999)
+bool cooledDown = barsSinceLoss > cooldown
+
+// ── Entry Signals ─────────────────────────────────────────────────────────────
+bool longSig  = failedBear and bullBias and cooledDown   // bear spike failed → long above SMA200
+bool shortSig = failedBull and bearBias and cooledDown   // bull spike failed → short below SMA200
+
+// Bar counter for time exit
+var int barsHeld = 0
+if strategy.position_size != 0
+    barsHeld += 1
+else
+    barsHeld := 0
+
+// ── Orders ────────────────────────────────────────────────────────────────────
+if longSig and strategy.position_size == 0
+    strategy.entry("L", strategy.long)
+    strategy.exit("L-exit", "L",
+                  stop  = low[1]  - slMult * atr,
+                  limit = close   + tpMult * atr)
+
+if shortSig and strategy.position_size == 0
+    strategy.entry("S", strategy.short)
+    strategy.exit("S-exit", "S",
+                  stop  = high[1] + slMult * atr,
+                  limit = close   - tpMult * atr)
+
+// Time stop — primary exit (TP/SL rarely fill due to inflated post-spike ATR)
+if strategy.position_size != 0 and barsHeld >= maxBars
+    strategy.close_all(comment="Time")
+
+// ── Visuals ───────────────────────────────────────────────────────────────────
+bgcolor(spiked ? color.new(color.orange, 88) : na, title="Spike bar")
+plot(ma, "SMA200", color=color.new(color.orange, 30), linewidth=2)
+plotshape(longSig,  title="Long",  style=shape.triangleup,   location=location.belowbar, color=color.green, size=size.small)
+plotshape(shortSig, title="Short", style=shape.triangledown, location=location.abovebar, color=color.red,   size=size.small)

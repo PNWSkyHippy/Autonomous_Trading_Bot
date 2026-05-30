@@ -1,0 +1,162 @@
+# Stock Watchlist
+# One symbol per line. Lines starting with # are comments.
+# Edit this file freely — bot reads it on startup.
+# No need to restart for changes to take effect on next scan.
+#
+# Last expanded: 2026-04-17
+# Target: 150+ high-volume liquid stocks for sufficient daily signal volume
+# Selection criteria: High daily volume, high volatility, options-active
+
+# ── Mega Cap Tech ─────────────────────────────────────────────────────────────
+NVDA
+META
+TSLA
+MSFT
+NFLX
+
+# ── Semiconductors ────────────────────────────────────────────────────────────
+AMD
+INTC
+MRVL
+ALAB
+QCOM
+TXN
+LRCX
+KLAC
+AMAT
+MU
+ON
+MPWR
+
+# ── AI / Cloud / Software ────────────────────────────────────────────────────
+PLTR
+CRM
+SNOW
+DDOG
+NET
+NOW
+CRWD
+ZS
+OKTA
+PANW
+GTLB
+PATH
+AI
+BBAI
+SOUN
+IONQ
+
+# ── Fintech / Payments ────────────────────────────────────────────────────────
+COIN
+HOOD
+AFRM
+SOFI
+NU
+PYPL
+
+# ── EV / Clean Energy / Battery ──────────────────────────────────────────────
+NIO
+LI
+XPEV
+RIVN
+LCID
+CHPT
+PLUG
+FCEL
+BE
+MP
+FSLR
+ENPH
+SEDG
+
+# ── Biotech / Pharma ─────────────────────────────────────────────────────────
+MRNA
+BNTX
+GILD
+REGN
+VRTX
+BIIB
+RXRX
+NVAX
+PFE
+OGN
+ACHR
+
+# ── Space / Defense / Aerospace ──────────────────────────────────────────────
+LUNR
+RKLB
+ASTS
+SPCE
+LMT
+RTX
+NOC
+BA
+
+# ── AI Infrastructure / Data Centers ─────────────────────────────────────────
+CRWV
+APLD
+IREN
+MARA
+RIOT
+CLSK
+OKLO
+SMR
+NNE
+
+# ── Crypto-Adjacent Stocks ───────────────────────────────────────────────────
+MSTR
+HIVE
+BTDR
+WULF
+CIFR
+CORZ
+
+# ── Networking / Optical ─────────────────────────────────────────────────────
+AAOI
+CLS
+CIEN
+#INFN  -- delisted
+
+# ── Chinese ADRs ─────────────────────────────────────────────────────────────
+BABA
+JD
+PDD
+BIDU
+
+# ── Consumer / Retail ────────────────────────────────────────────────────────
+AMZN
+SHOP
+CVNA
+
+# ── Financials ────────────────────────────────────────────────────────────────
+JPM
+BAC
+GS
+MS
+BX
+KKR
+
+# ── Energy ───────────────────────────────────────────────────────────────────
+XOM
+CVX
+OXY
+SLB
+HAL
+DVN
+
+# ── Healthcare / Med Tech ────────────────────────────────────────────────────
+ISRG
+DXCM
+HIMS
+TDOC
+
+# ── Shipping ─────────────────────────────────────────────────────────────────
+SIDU
+ZIM
+DAC
+
+# ── High Beta / Momentum ─────────────────────────────────────────────────────
+UPST
+OPEN
+SPWR
+#NKLA  -- delisted

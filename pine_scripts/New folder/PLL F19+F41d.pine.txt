@@ -1,0 +1,88 @@
+//@version=5
+strategy("PLL F19+F41d c=1.5 H2", overlay=false, initial_capital=10000, commission_type="percent", commission_value=0.04, slippage=2, pyramiding=0, process_orders_on_close=true)
+centerPeriod=96
+detrendLen=200
+loopBW=0.04
+lpfAlpha=0.15
+lockThresh=1.0
+slPct=3.0
+tpPct=12.0
+baseCash=30000.0
+martCap=1.5
+martStep=0.5
+twoPi=2.0*math.pi
+nomFreq=twoPi/centerPeriod
+fMax=nomFreq*2.0
+fMin=nomFreq*0.4
+Kp=1.4142*loopBW
+Ki=loopBW*loopBW
+trend=ta.sma(close,detrendLen)
+osc=nz(close-trend)
+oscRms=math.sqrt(math.max(nz(ta.sma(osc*osc,detrendLen)),1e-10))
+norm=osc/oscRms
+warmedUp=bar_index>detrendLen+5
+var float phase=0.0
+var float freq=0.06544984695
+var float integrator=0.0
+var float iLpf=0.0
+var float qLpf=0.0
+cosRef=math.cos(phase)
+sinRef=math.sin(phase)
+i_inst=warmedUp?norm*cosRef:0.0
+q_inst=warmedUp?-norm*sinRef:0.0
+iLpf:=iLpf+lpfAlpha*(i_inst-iLpf)
+qLpf:=qLpf+lpfAlpha*(q_inst-qLpf)
+denom=math.sqrt(iLpf*iLpf+qLpf*qLpf)+iLpf
+phaseErr=denom>1e-10?2.0*math.atan(qLpf/denom):(qLpf>=0?math.pi:-math.pi)
+integrator:=warmedUp?integrator+Ki*phaseErr:0.0
+freqRaw=nomFreq+Kp*phaseErr+integrator
+freqClamped=math.max(fMin,math.min(fMax,freqRaw))
+if freqClamped!=freqRaw
+    integrator:=freqClamped-nomFreq-Kp*phaseErr
+freq:=freqClamped
+phase:=phase+freq
+if phase>=twoPi
+    phase:=phase-twoPi
+if phase<0.0
+    phase:=phase+twoPi
+amp=math.sqrt(iLpf*iLpf+qLpf*qLpf)
+lockQ=amp/0.7071
+sinP=math.sin(phase)
+shortSig=ta.crossunder(sinP,0.0)
+longSig=ta.crossover(sinP,0.0)
+locked=lockQ>lockThresh
+ready=warmedUp and bar_index>detrendLen+100
+atr14_e=ta.atr(14)
+normATR=atr14_e/close
+refATR=ta.sma(normATR,200)
+volRatio=normATR/math.max(refATR,1e-10)
+volMult=math.max(1.0,math.min(1.5,volRatio))
+var int lossStreak=0
+var float eqAtEntry=na
+var float prevPos=0
+curPos=strategy.position_size
+posChanged=curPos!=prevPos
+justEntered=posChanged and prevPos==0 and curPos!=0
+justExited=posChanged and prevPos!=0 and curPos==0
+if justEntered
+    eqAtEntry:=strategy.equity
+if justExited
+    pnl=strategy.equity-nz(eqAtEntry,strategy.equity)
+    if pnl>0
+        lossStreak:=0
+    else
+        lossStreak:=lossStreak+1
+prevPos:=curPos
+martMult=math.min(martCap,1.0+martStep*lossStreak)
+effCash=baseCash*volMult*martMult
+effQty=effCash/close
+if shortSig and strategy.position_size>0
+    strategy.close("Long")
+if longSig and strategy.position_size<0
+    strategy.close("Short")
+if longSig and ready and locked
+    strategy.entry("Long",strategy.long,qty=effQty)
+if shortSig and ready and locked
+    strategy.entry("Short",strategy.short,qty=effQty)
+strategy.exit("L-brk",from_entry="Long",limit=strategy.position_avg_price*(1+tpPct/100),stop=strategy.position_avg_price*(1-slPct/100))
+strategy.exit("S-brk",from_entry="Short",limit=strategy.position_avg_price*(1-tpPct/100),stop=strategy.position_avg_price*(1+slPct/100))

@@ -1,0 +1,71 @@
+//@version=5
+strategy("PLL inv p96 lock1.2 + F19 (Variant O leg #7 ADMIN)", overlay=false, initial_capital=10000, commission_type=strategy.commission.percent, commission_value=0.04, slippage=2, pyramiding=0, process_orders_on_close=true)
+centerPeriod=input.int(80,"PLL center period")
+detrendLen=input.int(180,"Detrend length")
+loopBW=input.float(0.05,"PLL loop bandwidth")
+lpfAlpha=input.float(0.13,"PLL LPF alpha")
+lockThresh=input.float(1.2,"Amplitude lock threshold (Cycle 139: 1.2 strict Pareto vs 1.0)")
+slPct=input.float(4.0,"Stop loss %")
+tpPct=input.float(12.0,"Take profit %")
+baseCash=input.float(30000.0,"Base cash per trade ($)")
+volMultMin=input.float(1.00,"F19 min vol mult")
+volMultMax=input.float(1.50,"F19 max vol mult")
+twoPi=2.0*math.pi
+nomFreq=twoPi/centerPeriod
+fMax=nomFreq*2.0
+fMin=nomFreq*0.4
+Kp=1.4142*loopBW
+Ki=loopBW*loopBW
+trend=ta.sma(close,detrendLen)
+osc=nz(close-trend)
+oscRms=math.sqrt(math.max(nz(ta.sma(osc*osc,detrendLen)),1e-10))
+norm=osc/oscRms
+warmedUp=bar_index>detrendLen+5
+var float phase=0.0
+var float freq=0.06544984695
+var float integrator=0.0
+var float iLpf=0.0
+var float qLpf=0.0
+cosRef=math.cos(phase)
+sinRef=math.sin(phase)
+i_inst=warmedUp?norm*cosRef:0.0
+q_inst=warmedUp?-norm*sinRef:0.0
+iLpf:=iLpf+lpfAlpha*(i_inst-iLpf)
+qLpf:=qLpf+lpfAlpha*(q_inst-qLpf)
+denom=math.sqrt(iLpf*iLpf+qLpf*qLpf)+iLpf
+phaseErr=denom>1e-10?2.0*math.atan(qLpf/denom):(qLpf>=0?math.pi:-math.pi)
+integrator:=warmedUp?integrator+Ki*phaseErr:0.0
+freqRaw=nomFreq+Kp*phaseErr+integrator
+freqClamped=math.max(fMin,math.min(fMax,freqRaw))
+if freqClamped!=freqRaw
+    integrator:=freqClamped-nomFreq-Kp*phaseErr
+freq:=freqClamped
+phase:=phase+freq
+if phase>=twoPi
+    phase:=phase-twoPi
+if phase<0.0
+    phase:=phase+twoPi
+amp=math.sqrt(iLpf*iLpf+qLpf*qLpf)
+lockQ=amp/0.7071
+sinP=math.sin(phase)
+shortSig=ta.crossunder(sinP,0.0)
+longSig=ta.crossover(sinP,0.0)
+locked=lockQ>lockThresh
+ready=warmedUp and bar_index>detrendLen+100
+atr14_e=ta.atr(14)
+normATR=atr14_e/close
+refATR=ta.sma(normATR,200)
+volRatio=normATR/math.max(refATR,1e-10)
+volMult=math.max(volMultMin,math.min(volMultMax,volRatio))
+effCash=baseCash*volMult
+effQty=effCash/close
+if shortSig and strategy.position_size>0
+    strategy.close("Long")
+if longSig and strategy.position_size<0
+    strategy.close("Short")
+if longSig and ready and locked
+    strategy.entry("Long",strategy.long,qty=effQty)
+if shortSig and ready and locked
+    strategy.entry("Short",strategy.short,qty=effQty)
+strategy.exit("L-brk",from_entry="Long",limit=strategy.position_avg_price*(1+tpPct/100),stop=strategy.position_avg_price*(1-slPct/100))
+strategy.exit("S-brk",from_entry="Short",limit=strategy.position_avg_price*(1-tpPct/100),stop=strategy.position_avg_price*(1+slPct/100))

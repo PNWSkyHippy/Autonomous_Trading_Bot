@@ -1,0 +1,56 @@
+//@version=5
+strategy("ETH Hilbert Sweep — Webhook", overlay=false, initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=100, commission_type=strategy.commission.percent, commission_value=0.04, slippage=2)
+
+f19Period    = input.int(19,    title="F19 Period")
+f36Period    = input.int(34,    title="F36 Period")
+f41Period    = input.int(45,    title="F41 Period")
+decayAlpha   = input.float(3.85, title="F41 Decay Alpha")
+normLen      = input.int(171,   title="Norm Length")
+entryThresh  = input.float(1.0, title="Entry Z-Score Threshold")
+slPct        = input.float(2.58, title="Stop Loss %")
+tpPct        = input.float(8.92, title="Take Profit %")
+
+bandPass(s, period, bw) =>
+    beta  = math.cos(2.0 * math.pi / period)
+    gamma = 1.0 / math.cos(2.0 * math.pi * bw / period)
+    alpha = gamma - math.sqrt(gamma * gamma - 1.0)
+    var float bp = 0.0
+    bp := (1.0 - alpha) / 2.0 * (s - s[2]) + beta * (1.0 + alpha) * nz(bp[1]) - alpha * nz(bp[2])
+    bp
+
+bp19 = bandPass(close, f19Period, 0.5)
+bp36 = bandPass(close, f36Period, 0.5)
+bp41 = bandPass(close, f41Period, 0.5)
+
+var float bp41d = 0.0
+bp41d := decayAlpha * nz(bp41d[1]) + (1.0 - decayAlpha) * bp41
+
+composite = bp19 + bp36 + bp41d
+compMean  = ta.sma(composite, normLen)
+compStd   = ta.stdev(composite, normLen)
+zScore    = compStd != 0 ? (composite - compMean) / compStd : 0.0
+
+longCond  = ta.crossunder(zScore, -entryThresh)
+shortCond = ta.crossover(zScore,   entryThresh)
+
+WEBHOOK_SECRET = "20767101bb42cf734ce91eed8c9d624fcd4479c68a466dd11a03df0adc374323"
+makeMsg(actionStr) => '{"secret":"' + WEBHOOK_SECRET + '","strategy":"eth_hilbert_sweep","action":"' + actionStr + '","symbol":"ETHUSDT","price":' + str.tostring(close, "0.######") + ',"bar_time":' + str.tostring(time) + ',"position_size":' + str.tostring(strategy.position_size) + '}'
+
+if longCond
+    strategy.entry("Long", strategy.long)
+    alert(makeMsg("buy"), alert.freq_once_per_bar_close)
+
+if shortCond
+    strategy.entry("Short", strategy.short)
+    alert(makeMsg("short"), alert.freq_once_per_bar_close)
+
+longStop  = strategy.position_avg_price * (1 - slPct / 100)
+longLimit = strategy.position_avg_price * (1 + tpPct / 100)
+shortStop  = strategy.position_avg_price * (1 + slPct / 100)
+shortLimit = strategy.position_avg_price * (1 - tpPct / 100)
+
+if strategy.position_size > 0
+    strategy.exit("XL", "Long",  stop=longStop,  limit=longLimit)
+
+if strategy.position_size < 0
+    strategy.exit("XS", "Short", stop=shortStop, limit=shortLimit)

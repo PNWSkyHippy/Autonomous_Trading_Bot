@@ -1,0 +1,21 @@
+*claude_desktop_config.json*
+logs/bot.log
+*.log
+data/trading_bot.db
+ai-trading-agent/
+Archon/
+.env
+*.db
+*.pkl
+logs/
+__pycache__/
+venv311/
+venv312/
+exports/
+*.pyc
+*.ignore
+.env
+.mcp.json
+# Never commit encryption utility with real keys
+encrypt_key.py
+claude-skills/

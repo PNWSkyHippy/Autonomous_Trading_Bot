@@ -1,0 +1,151 @@
+# Crypto Watchlist
+# One pair per line in FORMAT/USD format. Lines starting with # are comments.
+# Edit this file freely — bot reads it on startup.
+# No need to restart for changes to take effect on next scan.
+#
+# Last expanded: 2026-04-17
+# Target: 100+ liquid pairs for sufficient daily signal volume
+# Removed: XAUT/USD (gold-backed, near-zero volatility — not tradeable)
+# Removed: SHIB/USD, PEPE/USD (sub-penny, filter catches them anyway)
+# Added: High-liquidity alts across all major sectors
+
+# ── Major Coins ──────────────────────────────────────────────────────────────
+BTC/USD
+ETH/USD
+SOL/USD
+BNB/USD
+XRP/USD
+LTC/USD
+BCH/USD
+
+# ── Layer 1 / Smart Contract ─────────────────────────────────────────────────
+ADA/USD
+AVAX/USD
+DOT/USD
+NEAR/USD
+#SUI/USD
+TRX/USD
+ATOM/USD
+ALGO/USD
+#APT/USD    -- delisted / no yfinance data
+INJ/USD
+SEI/USD
+EGLD/USD
+#FTM/USD    -- rebranded to S, no yfinance data
+ONE/USD
+HBAR/USD
+VET/USD
+EOS/USD
+XTZ/USD
+FLOW/USD
+
+# ── Layer 2 / Scaling ────────────────────────────────────────────────────────
+# MATIC/USD -- rebranded to POL Sept 2024, yfinance has no data for either ticker
+ARB/USD
+OP/USD
+#IMX/USD    -- no yfinance data
+STRK/USD
+MANTA/USD
+#BLAST/USD  -- no yfinance data
+
+# ── DeFi ─────────────────────────────────────────────────────────────────────
+AAVE/USD
+#UNI/USD   -- no yfinance data
+LINK/USD
+MKR/USD
+CRV/USD
+#COMP/USD  -- no yfinance data
+SNX/USD
+BAL/USD
+SUSHI/USD
+YFI/USD
+LDO/USD
+RPL/USD
+PENDLE/USD
+JUP/USD
+CAKE/USD
+
+# ── AI / Data / Oracle ───────────────────────────────────────────────────────
+#TAO/USD   -- no yfinance data
+WLD/USD
+#RNDR/USD  -- rebranded to RENDER (see RENDER/USD below)
+#GRT/USD   -- no yfinance data
+OCEAN/USD
+AGIX/USD
+NMR/USD
+RLC/USD
+
+# ── Gaming / Metaverse ───────────────────────────────────────────────────────
+AXS/USD
+SAND/USD
+MANA/USD
+ENJ/USD
+GALA/USD
+ILV/USD
+#GMT/USD   -- no yfinance data
+GODS/USD
+
+# ── Exchange Tokens ──────────────────────────────────────────────────────────
+OKB/USD
+KCS/USD
+GT/USD
+HT/USD
+
+# ── Infrastructure / Storage ─────────────────────────────────────────────────
+FIL/USD
+AR/USD
+HNT/USD
+THETA/USD
+HOT/USD
+SC/USD
+
+# ── Privacy ──────────────────────────────────────────────────────────────────
+ZEC/USD
+XMR/USD
+DASH/USD
+
+# ── High Momentum / Narrative ────────────────────────────────────────────────
+#HYPE/USD    -- no yfinance data
+#WLFI/USD   -- no yfinance data
+DOGE/USD
+WIF/USD
+BONK/USD
+#POPCAT/USD -- no yfinance data
+#MEW/USD    -- no yfinance data
+TRUMP/USD
+MELANIA/USD
+
+# ── Meme (high volatility — high reward/risk) ────────────────────────────────
+#RAVE/USD  -- no yfinance data
+FLOKI/USD
+#PEPE/USD  -- no yfinance data (sub-penny)
+
+# ── Cross-chain / Interop ────────────────────────────────────────────────────
+#DOT/USD   -- already listed in Layer 1 above
+RUNE/USD
+ZRX/USD
+REN/USD
+
+# ── Staking / Liquid Staking ─────────────────────────────────────────────────
+# REMOVED: STETH/USD, CBETH/USD, RETH/USD — ETH liquid staking tokens
+# These are pegged near ETH price, minimal independent volatility
+# Grid bot cannot profit from 0.01% daily movement
+ANKR/USD
+
+# ── Newer High-Volume ────────────────────────────────────────────────────────
+TIA/USD
+DYM/USD
+PYTH/USD
+JTO/USD
+BOME/USD
+W/USD
+TNSR/USD
+ETHFI/USD
+REZ/USD
+#BB/USD    -- no yfinance data
+NOT/USD
+#IO/USD    -- no yfinance data
+#ZK/USD    -- no yfinance data
+LISTA/USD
+#ZRO/USD   -- no yfinance data
+RENDER/USD

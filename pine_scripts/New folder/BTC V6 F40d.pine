@@ -1,0 +1,75 @@
+//@version=5
+strategy("BTC V6 F40d+F41 — Webhook", overlay=true, initial_capital=10000, default_qty_type=strategy.cash, default_qty_value=30000, commission_type=strategy.commission.percent, commission_value=0.04, slippage=2)
+
+growthRate  = input.float(1.5,  "growthRate",  step=0.1)
+decayRate   = input.float(0.5,  "decayRate",   step=0.1)
+martMultMax = input.float(1.0,  "martMultMax", step=0.5)
+atrMult     = input.float(5.0,  "atrMult",     step=0.5)
+rsiThresh   = input.int(43,     "rsiThresh")
+
+baseCash  = 30000.0
+amMultCap = 3.0
+
+rsi   = ta.rsi(close, 14)
+atr   = ta.atr(14)
+ema21 = ta.ema(close, 21)
+ema55 = ta.ema(close, 55)
+[_, _, adx] = ta.dmi(14, 14)
+trendUp = ema21 > ema55
+
+normATR_e  = ta.atr(14) / close
+refATR_e   = ta.sma(normATR_e, 200)
+volRatio   = normATR_e / math.max(refATR_e, 1e-10)
+volMult    = math.max(1.0, math.min(1.5, volRatio))
+signalMult = math.max(1.0, math.min(2.0, 1.0 + (adx - 20.0) / 30.0))
+
+var float streakMult  = 1.0
+var bool  lastWasLoss = false
+var float eqAtEntry   = na
+var float prevPos     = 0.0
+
+curPos      = strategy.position_size
+justEntered = curPos != prevPos and prevPos == 0 and curPos != 0
+justExited  = curPos != prevPos and prevPos != 0 and curPos == 0
+
+if justEntered
+    eqAtEntry := strategy.equity
+if justExited
+    pnl = strategy.equity - nz(eqAtEntry, strategy.equity)
+    if pnl > 0
+        streakMult  := math.min(amMultCap, streakMult * growthRate)
+        lastWasLoss := false
+    else
+        streakMult  := math.max(1.0, streakMult * decayRate)
+        lastWasLoss := true
+prevPos := curPos
+
+martMult = lastWasLoss ? martMultMax : 1.0
+effCash  = baseCash * volMult * signalMult * streakMult * martMult
+effQty   = effCash / close
+
+longEntry = rsi < rsiThresh and trendUp and adx >= 20 and strategy.position_size == 0
+
+var float chandelier = na
+var float trackHigh  = na
+
+WEBHOOK_SECRET = "20767101bb42cf734ce91eed8c9d624fcd4479c68a466dd11a03df0adc374323"
+makeMsg(actionStr) => '{"secret":"' + WEBHOOK_SECRET + '","strategy":"btc_v6_f40d","action":"' + actionStr + '","symbol":"BTCUSDT","price":' + str.tostring(close, "0.######") + ',"bar_time":' + str.tostring(time) + ',"position_size":' + str.tostring(strategy.position_size) + '}'
+
+if longEntry and effQty > 0
+    trackHigh  := high
+    chandelier := close - atr * atrMult
+    strategy.entry("Long", strategy.long, qty=effQty)
+    alert(makeMsg("buy"), alert.freq_once_per_bar_close)
+
+if strategy.position_size > 0
+    trackHigh  := math.max(nz(trackHigh, high), high)
+    chandelier := math.max(nz(chandelier, close - atr * atrMult), trackHigh - atr * atrMult)
+    strategy.exit("LX", "Long", stop=chandelier)
+else
+    trackHigh  := na
+    chandelier := na
+
+plot(strategy.position_size > 0 ? chandelier : na, "Chandelier Stop", color=color.new(color.red, 0), style=plot.style_stepline, linewidth=1)
+plot(ema21, "EMA 21", color=color.new(color.lime, 60), linewidth=1)
+plot(ema55, "EMA 55", color=color.new(color.orange, 60), linewidth=1)

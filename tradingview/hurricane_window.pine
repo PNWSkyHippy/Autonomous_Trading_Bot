@@ -1,0 +1,222 @@
+//@version=5
+// =============================================================================
+// Hurricane Window v2 — ES Scalping Confluence Indicator
+// =============================================================================
+// Designed for ES futures scalping AFTER the first 30 minutes of the session.
+// Paints a visual "hurricane window" when momentum + direction all align,
+// so your finger is ready before the wave breaks.
+//
+// v2 changes vs v1:
+//   - ADX default threshold raised 20 → 25 (filters weak/choppy momentum)
+//   - 3-bar confirmation delay added — window only opens after conditions
+//     hold for 3 consecutive bars. Eliminates flicker windows on chop.
+//   - Confirmation bars count is a user input (default 3, range 1-5)
+//
+// Conditions for a LONG hurricane window (green background):
+//   1. ADX >= threshold (momentum strong enough to surf)
+//   2. DI+ > DI- (buyers in control)
+//   3. TSI > TSI signal line (momentum confirming upward)
+//   4. Price above VWAP (institutional bias bullish)
+//   5. Time is past the wild-west open filter (default: after 10:00 AM EST)
+//   6. All of the above held true for N consecutive bars (confirmation delay)
+//
+// Conditions for a SHORT hurricane window (red background):
+//   Same but flipped — DI- > DI+, TSI below signal, price below VWAP
+//
+// Strategy: tight stop loss, NO take profit, manual exit when wave reverses.
+// Enter on green/red background, ride till color fades or flips.
+// =============================================================================
+
+indicator("Hurricane Window v2 — ES Scalp", shorttitle="Hurricane v2", overlay=true)
+
+// -----------------------------------------------------------------------------
+// User Inputs
+// -----------------------------------------------------------------------------
+
+// Time filter — ignore signals during wild-west open period
+filterHour   = input.int(10, "Open Filter Hour (EST)",   minval=0, maxval=23,
+     tooltip="No signals before this hour. Default 10:00 skips the chaotic open 30 min.")
+filterMinute = input.int(0,  "Open Filter Minute (EST)", minval=0, maxval=59)
+
+// ADX settings
+adxLen       = input.int(14,  "ADX Length", minval=1)
+adxThreshold = input.float(25, "ADX Threshold (min momentum)", minval=5, step=1,
+     tooltip="ADX must be above this to consider a wave tradeable. 25 = solid trend. Raise to 30 on very choppy days.")
+
+// Confirmation delay — how many consecutive bars conditions must hold
+// before the window opens. Eliminates flicker signals on chop.
+confirmBars  = input.int(3, "Confirmation Bars", minval=1, maxval=5,
+     tooltip="Number of consecutive bars ALL conditions must be true before window opens. 3 = default. Raise to 4-5 on choppy days.")
+
+// TSI settings
+tsiLong  = input.int(13, "TSI Long Length",   minval=1)
+tsiShort = input.int(7,  "TSI Short Length",  minval=1)
+tsiSig   = input.int(7,  "TSI Signal Length", minval=1)
+
+// Visual settings
+showVwapBands = input.bool(true,  "Show VWAP Stretch Bands")
+showBarColor  = input.bool(true,  "Color Bars by DI Direction")
+showArrows    = input.bool(true,  "Show TSI Cross Arrows")
+showConfirm   = input.bool(true,  "Show Unconfirmed Window (faint)",
+     tooltip="Show a very faint background while conditions are met but confirmation bars haven't elapsed yet. Gives early warning.")
+
+// -----------------------------------------------------------------------------
+// Time Filter
+// -----------------------------------------------------------------------------
+tz             = "America/New_York"
+hourEst        = hour(time, tz)
+minuteEst      = minute(time, tz)
+pastOpenFilter = (hourEst > filterHour) or
+     (hourEst == filterHour and minuteEst >= filterMinute)
+
+// -----------------------------------------------------------------------------
+// ADX + DI+/DI- Calculation
+// -----------------------------------------------------------------------------
+// ADX measures trend STRENGTH. DI+ vs DI- shows DIRECTION.
+// Both together: strong move AND which way.
+// -----------------------------------------------------------------------------
+[diPlus, diMinus, adxVal] = ta.dmi(adxLen, adxLen)
+
+adxOk     = adxVal >= adxThreshold
+bullishDI = diPlus  > diMinus   // buyers in control
+bearishDI = diMinus > diPlus    // sellers in control
+
+// -----------------------------------------------------------------------------
+// TSI — True Strength Index
+// Double-smoothed momentum oscillator. Cuts through 1-second noise better
+// than RSI. Cross of TSI above signal = momentum turning up.
+// -----------------------------------------------------------------------------
+tsiPC = close - close[1]
+
+double_smooth(src, long, short) =>
+    ta.ema(ta.ema(src, long), short)
+
+numerator   = double_smooth(tsiPC,           tsiLong, tsiShort)
+denominator = double_smooth(math.abs(tsiPC), tsiLong, tsiShort)
+tsiValue    = denominator != 0 ? 100 * numerator / denominator : 0
+tsiSignal   = ta.ema(tsiValue, tsiSig)
+
+tsiUp   = tsiValue > tsiSignal   // momentum bullish
+tsiDown = tsiValue < tsiSignal   // momentum bearish
+
+// TSI cross events for arrow markers
+tsiCrossUp   = ta.crossover(tsiValue,  tsiSignal)
+tsiCrossDown = ta.crossunder(tsiValue, tsiSignal)
+
+// -----------------------------------------------------------------------------
+// VWAP + Stretch Bands
+// -----------------------------------------------------------------------------
+// VWAP = institutional fair value for the session.
+// Price above VWAP = buyers in control all day.
+// Stretch bands show when price is extended — potential mean reversion zone.
+// -----------------------------------------------------------------------------
+vwapValue = ta.vwap(hlc3)
+atrValue  = ta.atr(14)
+vwapUp1   = vwapValue + atrValue
+vwapUp2   = vwapValue + atrValue * 2
+vwapDn1   = vwapValue - atrValue
+vwapDn2   = vwapValue - atrValue * 2
+aboveVwap = close > vwapValue
+belowVwap = close < vwapValue
+
+// -----------------------------------------------------------------------------
+// Raw Conditions (before confirmation delay)
+// -----------------------------------------------------------------------------
+rawLong  = pastOpenFilter and adxOk and bullishDI and tsiUp   and aboveVwap
+rawShort = pastOpenFilter and adxOk and bearishDI and tsiDown and belowVwap
+
+// -----------------------------------------------------------------------------
+// Confirmation Delay
+// -----------------------------------------------------------------------------
+// Require conditions to hold for N consecutive bars before window opens.
+// This is the key filter that eliminates flicker windows on choppy days.
+// Uses a rolling sum — if sum equals confirmBars, all N bars were true.
+// -----------------------------------------------------------------------------
+longConfirmed  = math.sum(rawLong  ? 1 : 0, confirmBars) >= confirmBars
+shortConfirmed = math.sum(rawShort ? 1 : 0, confirmBars) >= confirmBars
+
+// These are the actual confirmed hurricane windows
+longWindow  = longConfirmed
+shortWindow = shortConfirmed
+
+// -----------------------------------------------------------------------------
+// Bar Coloring — direction bias at a glance
+// -----------------------------------------------------------------------------
+// Green bars = DI+ dominant (buyers)
+// Red bars   = DI- dominant (sellers)
+// Gray bars  = no clear direction or ADX too weak
+// -----------------------------------------------------------------------------
+barCol = showBarColor ?
+     (adxOk and bullishDI ? color.new(color.green, 40) :
+      adxOk and bearishDI ? color.new(color.red,   40) :
+      color.new(color.gray, 60)) : na
+
+barcolor(barCol)
+
+// -----------------------------------------------------------------------------
+// Plots — Price Overlay
+// -----------------------------------------------------------------------------
+
+// VWAP line
+plot(vwapValue, title="VWAP",
+     color=color.new(color.orange, 0), linewidth=2)
+
+// VWAP stretch bands (optional)
+plot(showVwapBands ? vwapUp1 : na, title="VWAP +1 ATR",
+     color=color.new(color.orange, 60), linewidth=1, style=plot.style_linebr)
+plot(showVwapBands ? vwapUp2 : na, title="VWAP +2 ATR",
+     color=color.new(color.orange, 40), linewidth=1, style=plot.style_linebr)
+plot(showVwapBands ? vwapDn1 : na, title="VWAP -1 ATR",
+     color=color.new(color.orange, 60), linewidth=1, style=plot.style_linebr)
+plot(showVwapBands ? vwapDn2 : na, title="VWAP -2 ATR",
+     color=color.new(color.orange, 40), linewidth=1, style=plot.style_linebr)
+
+// TSI cross arrows on price chart
+plotshape(showArrows and tsiCrossUp,   title="TSI Cross Up",
+     style=shape.triangleup,   location=location.belowbar,
+     color=color.new(color.lime, 0), size=size.tiny)
+plotshape(showArrows and tsiCrossDown, title="TSI Cross Down",
+     style=shape.triangledown, location=location.abovebar,
+     color=color.new(color.red,  0), size=size.tiny)
+
+// Unconfirmed window — faint early warning while bars are building
+// Shows you conditions are aligning BEFORE the confirmed window opens
+bgcolor(showConfirm and rawLong  and not longWindow  ?
+     color.new(color.green, 92) : na, title="Long Building (unconfirmed)")
+bgcolor(showConfirm and rawShort and not shortWindow ?
+     color.new(color.red,   92) : na, title="Short Building (unconfirmed)")
+
+// Confirmed hurricane window — full color, this is your entry zone
+bgcolor(longWindow  ? color.new(color.green, 72) : na, title="Long Hurricane Window")
+bgcolor(shortWindow ? color.new(color.red,   72) : na, title="Short Hurricane Window")
+
+// Open filter zone — subtle gray, stay out during wild west open
+bgcolor(not pastOpenFilter ? color.new(color.gray, 88) : na, title="Open Filter Zone")
+
+// -----------------------------------------------------------------------------
+// Alerts — fire on confirmed window open/close only
+// -----------------------------------------------------------------------------
+alertcondition(longWindow  and not longWindow[1],
+     title="Hurricane Window LONG opened",
+     message="Hurricane LONG confirmed | {{ticker}} | Price: {{close}} | Time: {{time}}")
+
+alertcondition(shortWindow and not shortWindow[1],
+     title="Hurricane Window SHORT opened",
+     message="Hurricane SHORT confirmed | {{ticker}} | Price: {{close}} | Time: {{time}}")
+
+alertcondition((longWindow[1] or shortWindow[1]) and not longWindow and not shortWindow,
+     title="Hurricane Window CLOSED",
+     message="Hurricane Window closed — consider exit | {{ticker}} | Price: {{close}}")
+
+// Dynamic alerts
+if longWindow and not longWindow[1]
+    alert("Hurricane LONG confirmed | " + syminfo.ticker +
+          " | ADX=" + str.tostring(adxVal, "#.#") +
+          " | DI+>DI- | TSI up | Above VWAP",
+          alert.freq_once_per_bar)
+
+if shortWindow and not shortWindow[1]
+    alert("Hurricane SHORT confirmed | " + syminfo.ticker +
+          " | ADX=" + str.tostring(adxVal, "#.#") +
+          " | DI->DI+ | TSI down | Below VWAP",
+          alert.freq_once_per_bar)

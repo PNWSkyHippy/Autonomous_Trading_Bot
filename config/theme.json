@@ -1,0 +1,20 @@
+{
+  "--bg-0": "#0a0c0e",
+  "--bg-1": "#131416",
+  "--bg-2": "#000000",
+  "--bg-3": "#2a74a2",
+  "--bg-4": "#28559a",
+  "--border": "#a92873",
+  "--border-strong": "#2e518a",
+  "--text-0": "#ffeb14",
+  "--text-1": "#df8507",
+  "--text-2": "#07edbf",
+  "--accent": "#119c8c",
+  "--accent-bright": "#13bea7",
+  "--bevel-hi": "rgba(255,255,255,0.10)",
+  "--bevel-sh": "rgba(0,0,0,0.62)",
+  "--panel-tilt": "3",
+  "--panel-thickness": "14",
+  "--panel-perspective": "650",
+  "--panel-edge-color": "#25159e"
+}

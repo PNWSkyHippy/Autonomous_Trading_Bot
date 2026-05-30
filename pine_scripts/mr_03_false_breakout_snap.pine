@@ -1,0 +1,132 @@
+//@version=5
+// ─────────────────────────────────────────────────────────────────────────────
+// MR-03 v5  False Breakout Snap  (BB + SMA200 direction filter)
+// ─────────────────────────────────────────────────────────────────────────────
+// Hypothesis:
+//   When a bar closes outside a Bollinger Band and the following 1-2 bars
+//   close back inside, retail breakout chasers are trapped. The snap-back bar
+//   is the entry. The move is faded back toward the mean over 36 hours.
+//
+// Edge: False BB breakouts on 1h crypto trap breakout participants. The snap-
+//       back has a directional drift bias (~62% WR on BTC, tested 2022-2025).
+//
+// Key design decisions:
+//   - BB Mult 1.75 (not 2.0): 27-combo TV sweep confirmed 1.75 dominates every
+//     comparison. At 2.0 (old default) PF averages 0.83 across all maxBars/snap
+//     combos; at 1.75 it averages 0.95. Tighter bands = cleaner snap setups.
+//   - snapBars=2: 1-bar snaps miss valid setups; 3-bar snaps take stale entries.
+//   - SMA200 direction filter: long only above SMA200, short only below.
+//   - No ADX filter: BB breakouts correlate POSITIVELY with ADX — ADX<30 kills
+//     99%+ of signals.
+//   - No Z-score filter: redundant (any close outside BB(20,1.75) has |z|>1.75).
+//   - Time stop at 36 bars: sweep showed 36-bar plateau outperforms 48-72.
+//   - ATR-based TP/SL: emergency guards only — inflated post-breakout ATR means
+//     they rarely fill; time stop is the primary exit.
+//
+// CHANGELOG:
+//   v1 (original) — BB(1.75) + Z-score(1.5) + ADX(30), 24-bar time stop
+//   v2            — ADX ceiling raised to 40, Z checked on actual break bar
+//   v3            — Dropped ADX, ATR TP (1.5x), maxBars=48; Pine scope bug
+//   v4            — FIXED cooldown deadlock; dropped ADX+Z; added SMA200 filter
+//   v5 (current)  — bbMult 2.0→1.75, maxBars 48→36 (27-combo TV sweep result)
+//
+// Backtest results (BTCUSDT 1h, 2022-01-01 to 2025-present):
+//   v4 long-only (above SMA200): 209 trades | PF 1.39 | WR 56.0% | +6.83% | DD 3.57%
+//   v4 both directions:           381 trades | PF 1.15 | WR 52.5% | +2.79% | DD 3.68%
+//   v5 TV sweep best (both dirs): 227 trades | PF 1.07 | WR 61.7% | +0.73% | DD 1.87%
+//   Note: TV sweep is BTC both-dirs; long-only above SMA200 significantly better
+// ─────────────────────────────────────────────────────────────────────────────
+strategy("MR-03 v5 False Breakout Snap", shorttitle="MR-03 FBS", overlay=true,
+         default_qty_type  = strategy.percent_of_equity,
+         default_qty_value = 10,
+         commission_type   = strategy.commission.percent,
+         commission_value  = 0.05,
+         slippage          = 2)
+
+// ── Inputs ────────────────────────────────────────────────────────────────────
+int   bbLen    = input.int  (20,  "BB Period",              minval=5,  group="Bollinger Bands")
+float bbMult   = input.float(1.75,"BB Std Dev Multiplier",  step=0.1,  group="Bollinger Bands")
+int   snapBars = input.int  (2,   "Max Bars to Snap Back",  minval=1, maxval=5, group="Bollinger Bands")
+int   maLen    = input.int  (200, "Trend MA Period",        minval=20, group="Trend Filter",
+                             tooltip="Long only above this MA; short only below. Prevents counter-trend fades.")
+int   atrLen   = input.int  (14,  "ATR Period",             minval=5,  group="Risk")
+float tpMult   = input.float(1.5, "TP ATR Mult",            step=0.1,  group="Risk",
+                             tooltip="Emergency TP guard. Post-breakout ATR is inflated so this rarely fills — time stop is the typical exit.")
+float slMult   = input.float(2.0, "SL ATR Mult",            step=0.1,  group="Risk")
+int   maxBars  = input.int  (36,  "Max Bars in Trade",      minval=1,  group="Risk",
+                             tooltip="Primary exit. Sweep confirmed 36-bar plateau outperforms 48-72 on 1h crypto.")
+int   cooldown = input.int  (3,   "Cooldown Bars After Loss", minval=0, group="Risk")
+
+// ── Calculations ──────────────────────────────────────────────────────────────
+[bbMid, bbUpper, bbLower] = ta.bb(close, bbLen, bbMult)
+float atr = ta.atr(atrLen)
+float ma  = ta.sma(close, maLen)
+bool  bullBias = close > ma   // above SMA200 → only longs
+bool  bearBias = close < ma   // below SMA200 → only shorts
+
+// ── Fixed Cooldown Logic ──────────────────────────────────────────────────────
+// IMPORTANT: The naive pattern below has a deadlock bug:
+//   if strategy.closedtrades.profit(last) < 0 → barsSinceLoss := 0
+// This re-checks the same closed trade on EVERY subsequent bar, resetting to 0
+// indefinitely until a NEW trade closes. Strategy is permanently frozen after loss.
+//
+// FIX: compare closedtrades count; only update on the bar a trade actually closes.
+var int lastCount     = 0
+var int barsSinceLoss = 999    // large initial value = immediately ready to trade
+
+if strategy.closedtrades > lastCount
+    if strategy.closedtrades.profit(strategy.closedtrades - 1) < 0
+        barsSinceLoss := 0
+    lastCount := strategy.closedtrades
+barsSinceLoss := math.min(barsSinceLoss + 1, 9999)
+bool cooledDown = barsSinceLoss > cooldown
+
+// ── BB Snap Detection ─────────────────────────────────────────────────────────
+// Scan the last snapBars bars: did any of them close outside a band?
+bool recentBrokeUp = false
+bool recentBrokeDn = false
+for i = 1 to snapBars
+    if close[i] > bbUpper[i]
+        recentBrokeUp := true
+    if close[i] < bbLower[i]
+        recentBrokeDn := true
+
+// Current bar snapped back inside the band
+bool snapBackDown = recentBrokeUp and close < bbUpper   // broke above → now inside
+bool snapBackUp   = recentBrokeDn and close > bbLower   // broke below → now inside
+
+// ── Entry Signals ─────────────────────────────────────────────────────────────
+bool longSig  = snapBackUp   and bullBias and cooledDown
+bool shortSig = snapBackDown and bearBias and cooledDown
+
+// Bar counter for time exit
+var int barsHeld = 0
+if strategy.position_size != 0
+    barsHeld += 1
+else
+    barsHeld := 0
+
+// ── Orders ────────────────────────────────────────────────────────────────────
+if longSig and strategy.position_size == 0
+    strategy.entry("L", strategy.long)
+    strategy.exit("L-exit", "L",
+                  stop  = close - slMult * atr,
+                  limit = close + tpMult * atr)
+
+if shortSig and strategy.position_size == 0
+    strategy.entry("S", strategy.short)
+    strategy.exit("S-exit", "S",
+                  stop  = close + slMult * atr,
+                  limit = close - tpMult * atr)
+
+// Time stop — primary exit
+if strategy.position_size != 0 and barsHeld >= maxBars
+    strategy.close_all(comment="Time")
+
+// ── Visuals ───────────────────────────────────────────────────────────────────
+plot(bbMid,   "BB Mid",   color=color.gray,               linewidth=1)
+plot(bbUpper, "BB Upper", color=color.new(color.red,40),  linewidth=1)
+plot(bbLower, "BB Lower", color=color.new(color.green,40),linewidth=1)
+plot(ma, "SMA200", color=color.new(color.orange,30), linewidth=2)
+plotshape(longSig,  title="Long",  style=shape.triangleup,   location=location.belowbar, color=color.green, size=size.small)
+plotshape(shortSig, title="Short", style=shape.triangledown, location=location.abovebar, color=color.red,   size=size.small)

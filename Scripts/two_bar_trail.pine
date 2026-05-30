@@ -1,0 +1,143 @@
+//@version=5
+// =============================================================================
+// 2-Bar Trailing Stop Strategy (Long Only)
+// =============================================================================
+// Entry:        SMA crossover (demo) — replace `entryCondition` to plug in your own
+// Initial stop: Lowest low of the prior N bars at time of entry
+// Trail:        On each new N-bar high (close basis), advance stop to the
+//               lowest low of the prior N bars. Stop ratchets up only.
+// Exit:         strategy.exit() with stop attached
+// =============================================================================
+
+strategy("2-Bar Trailing Stop Strategy",
+     shorttitle="2BarTrail",
+     overlay=true,
+     default_qty_type=strategy.percent_of_equity,
+     default_qty_value=10,
+     initial_capital=10000,
+     commission_type=strategy.commission.percent,
+     commission_value=0.05,
+     pyramiding=0,
+     calc_on_every_tick=false,
+     process_orders_on_close=true)
+
+// -----------------------------------------------------------------------------
+// Inputs
+// -----------------------------------------------------------------------------
+lookback   = input.int(2, "Lookback Bars (N)", minval=1, maxval=20,
+     tooltip="Number of prior bars used for stop placement and trail trigger.")
+showStop   = input.bool(true, "Show Stop Line",
+     tooltip="Toggle visibility of the trailing stop line on the chart.")
+
+// Demo entry signal — swap these out or replace `entryCondition` below
+fastLen    = input.int(9,  "Demo: Fast MA Length",  minval=1, group="Demo Entry")
+slowLen    = input.int(21, "Demo: Slow MA Length",  minval=1, group="Demo Entry")
+useDemoSig = input.bool(true, "Use Demo MA Cross Entry", group="Demo Entry",
+     tooltip="Turn off if you're wiring in your own entry condition.")
+
+// -----------------------------------------------------------------------------
+// Entry Condition
+// -----------------------------------------------------------------------------
+// Replace this with your own logic if useDemoSig is false. The strategy only
+// requires a boolean `entryCondition` that is true on the bar you want to enter.
+// -----------------------------------------------------------------------------
+fastMA = ta.sma(close, fastLen)
+slowMA = ta.sma(close, slowLen)
+
+demoEntry      = ta.crossover(fastMA, slowMA)
+entryCondition = useDemoSig ? demoEntry : false  // <-- plug your signal in here
+
+// -----------------------------------------------------------------------------
+// Stop calculation helpers
+// -----------------------------------------------------------------------------
+// "Lowest low of the prior N bars" — uses bars [1..N], NOT the current bar.
+// This avoids look-ahead and means the stop is defined by completed price
+// action at the moment of evaluation.
+//
+// Similarly, "new N-bar high" means the current bar's high exceeds the highest
+// high among the prior N bars.
+// -----------------------------------------------------------------------------
+priorLowestLow  = ta.lowest(low[1],  lookback)   // lowest of bars [1..N]
+priorHighestHigh = ta.highest(high[1], lookback) // highest of bars [1..N]
+isNewNBarHigh   = high > priorHighestHigh
+
+// -----------------------------------------------------------------------------
+// State variables
+// -----------------------------------------------------------------------------
+// stopLevel  -> current trailing stop price (na when flat)
+// hasTrailed -> true once the stop has moved up at least once after entry
+//               (used purely for color-coding: red=initial, green=trailing)
+// -----------------------------------------------------------------------------
+var float stopLevel  = na
+var bool  hasTrailed = false
+
+// -----------------------------------------------------------------------------
+// Entry
+// -----------------------------------------------------------------------------
+// Enter long on signal when flat. Initial stop is set on the SAME bar so that
+// strategy.exit() can attach to the position immediately.
+// -----------------------------------------------------------------------------
+if entryCondition and strategy.position_size == 0
+    strategy.entry("Long", strategy.long)
+    stopLevel  := priorLowestLow   // initial stop = lowest low of prior N bars
+    hasTrailed := false
+
+// -----------------------------------------------------------------------------
+// Trail
+// -----------------------------------------------------------------------------
+// While in a position, on every new N-bar high, propose a new stop at the
+// prior N-bar low. Apply only if it raises the existing stop (ratchet up).
+// -----------------------------------------------------------------------------
+if strategy.position_size > 0 and isNewNBarHigh
+    candidateStop = priorLowestLow
+    if not na(candidateStop) and candidateStop > nz(stopLevel, candidateStop - 1)
+        stopLevel  := candidateStop
+        hasTrailed := true
+
+// -----------------------------------------------------------------------------
+// Exit
+// -----------------------------------------------------------------------------
+// strategy.exit() submits a stop order each bar; the engine handles the fill
+// when price trades through `stopLevel`.
+// -----------------------------------------------------------------------------
+if strategy.position_size > 0 and not na(stopLevel)
+    strategy.exit("Stop", from_entry="Long", stop=stopLevel)
+
+// -----------------------------------------------------------------------------
+// Reset state on flat
+// -----------------------------------------------------------------------------
+// When the position closes, clear stop state so the next entry starts fresh.
+// -----------------------------------------------------------------------------
+if strategy.position_size == 0
+    stopLevel  := na
+    hasTrailed := false
+
+// -----------------------------------------------------------------------------
+// Visuals
+// -----------------------------------------------------------------------------
+
+// Stop line: red while at initial level, green once it has trailed up at least once.
+// Using plot.style_linebr so the line breaks cleanly when flat (no connecting
+// line between separate trades).
+stopColor = hasTrailed ? color.new(color.green, 0) : color.new(color.red, 0)
+plot(showStop and not na(stopLevel) ? stopLevel : na,
+     title="Trailing Stop", color=stopColor, linewidth=2,
+     style=plot.style_linebr)
+
+// Entry markers — triangle below the entry bar
+plotshape(entryCondition and strategy.position_size == 0,
+     title="Entry", style=shape.triangleup, location=location.belowbar,
+     color=color.new(color.blue, 0), size=size.small, text="ENTRY")
+
+// Exit markers — square at the exit price.
+// strategy.position_size flips to 0 on the bar AFTER exit, so we detect it
+// with a state change.
+isExitBar = strategy.position_size == 0 and strategy.position_size[1] > 0
+plotshape(isExitBar,
+     title="Exit", style=shape.square, location=location.abovebar,
+     color=color.new(color.orange, 0), size=size.small, text="EXIT")
+
+// Optional: show the demo MAs so the entry logic is visible during backtesting.
+// Comment these out if you wire in your own entry and don't want them on the chart.
+plot(useDemoSig ? fastMA : na, title="Fast MA", color=color.new(color.aqua, 50))
+plot(useDemoSig ? slowMA : na, title="Slow MA", color=color.new(color.purple, 50))
