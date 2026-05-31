@@ -19,3 +19,8 @@ exports/
 # Never commit encryption utility with real keys
 encrypt_key.py
 claude-skills/
+
+# Allow blank schema DB and ML models for public repo
+!data/trading_bot.db
+!data/ml_model.pkl
+!data/ml_scaler.pkl

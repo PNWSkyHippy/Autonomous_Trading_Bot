@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DB Browser — trading_bot_v2</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d1117;color:#e0e0e0;font-family:'Consolas',monospace;font-size:13px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── top bar ── */
+.topbar{background:#161b22;border-bottom:1px solid #2a3a5c;padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.topbar h1{font-size:14px;color:#58a6ff;font-weight:700;margin-right:8px}
+.topbar a{color:#8b949e;text-decoration:none;font-size:12px}
+.topbar a:hover{color:#58a6ff}
+
+/* ── quick buttons ── */
+.quickbar{background:#161b22;border-bottom:1px solid #2a3a5c;padding:6px 10px;display:flex;gap:6px;flex-wrap:wrap;flex-shrink:0;align-items:center}
+.quickbar span{color:#8b949e;font-size:11px;margin-right:4px}
+.qbtn{background:#1f2937;border:1px solid #374151;color:#e0e0e0;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:11px;font-family:inherit}
+.qbtn:hover{background:#2563eb;border-color:#3b82f6}
+.qbtn.ghost{background:#7f1d1d;border-color:#dc2626}
+.qbtn.ghost:hover{background:#dc2626}
+.qbtn.strat{background:#1a3a2a;border-color:#16a34a}
+.qbtn.strat:hover{background:#16a34a}
+
+/* ── search bar ── */
+.searchbar{background:#0d1117;border-bottom:1px solid #2a3a5c;padding:6px 10px;display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap}
+.searchbar label{color:#8b949e;font-size:11px}
+.searchbar input,.searchbar select{background:#161b22;border:1px solid #374151;color:#e0e0e0;padding:3px 7px;border-radius:4px;font-size:11px;font-family:inherit}
+.searchbar input:focus,.searchbar select:focus{outline:none;border-color:#2563eb}
+.sbtn{background:#16a34a;border:none;color:#fff;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:11px;font-family:inherit;font-weight:700}
+.sbtn:hover{background:#15803d}
+
+/* ── main split ── */
+.main{display:flex;flex:1;overflow:hidden}
+
+/* ── sidebar ── */
+.sidebar{width:190px;background:#161b22;border-right:1px solid #2a3a5c;overflow-y:auto;flex-shrink:0}
+.sidebar h3{padding:8px 10px;font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid #2a3a5c}
+.tbl-item{padding:7px 12px;cursor:pointer;border-bottom:1px solid #1f2937;display:flex;justify-content:space-between;align-items:center}
+.tbl-item:hover{background:#1f2937}
+.tbl-item.active{background:#1e3a5f;border-left:3px solid #2563eb}
+.tbl-name{color:#e0e0e0;font-size:12px}
+.tbl-cnt{color:#8b949e;font-size:10px}
+
+/* ── grid area ── */
+.gridwrap{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.gridtitle{padding:6px 12px;background:#161b22;border-bottom:1px solid #2a3a5c;display:flex;align-items:center;gap:12px;flex-shrink:0}
+.gridtitle span{color:#f0c040;font-size:12px;font-weight:700}
+.gridtitle .rowcount{color:#8b949e;font-size:11px}
+.tablecon{overflow:auto;flex:1}
+table{width:100%;border-collapse:collapse}
+thead th{background:#1e2d40;color:#8b949e;padding:6px 8px;text-align:left;font-size:11px;font-weight:700;position:sticky;top:0;cursor:pointer;white-space:nowrap;border-bottom:1px solid #2a3a5c;user-select:none}
+thead th:hover{background:#253347;color:#e0e0e0}
+thead th.sorted{color:#58a6ff}
+tbody tr{border-bottom:1px solid #161b22}
+tbody tr:nth-child(even){background:#0d1117}
+tbody tr:nth-child(odd){background:#111827}
+tbody tr:hover{background:#1e3a5f;cursor:pointer}
+tbody tr.selected{background:#1e3a5f;outline:2px solid #2563eb}
+td{padding:5px 8px;font-size:11px;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis;color:#e0e0e0}
+td.pos{color:#4ade80}
+td.neg{color:#f87171}
+
+/* ── action bar ── */
+.actionbar{background:#161b22;border-top:1px solid #2a3a5c;padding:6px 10px;display:flex;gap:8px;align-items:center;flex-shrink:0}
+.actionbar span{color:#8b949e;font-size:11px}
+.abtn{border:none;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:11px;font-family:inherit;font-weight:700}
+.abtn.edit{background:#2563eb;color:#fff}
+.abtn.edit:hover{background:#1d4ed8}
+.abtn.flush{background:#dc2626;color:#fff}
+.abtn.flush:hover{background:#b91c1c}
+.abtn.enable{background:#16a34a;color:#fff}
+.abtn.enable:hover{background:#15803d}
+.abtn.disable{background:#9f1239;color:#fff}
+.abtn.disable:hover{background:#881337}
+.abtn:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── status bar ── */
+.statusbar{background:#161b22;border-top:1px solid #2a3a5c;padding:4px 12px;font-size:11px;color:#8b949e;flex-shrink:0}
+.statusbar.ok{color:#4ade80}
+.statusbar.err{color:#f87171}
+
+/* ── modal ── */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
+.modal-bg.open{display:flex}
+.modal{background:#161b22;border:1px solid #374151;border-radius:8px;width:660px;max-height:80vh;display:flex;flex-direction:column}
+.modal-head{padding:12px 16px;border-bottom:1px solid #374151;display:flex;justify-content:space-between;align-items:center}
+.modal-head h3{font-size:13px;color:#e0e0e0}
+.modal-head button{background:none;border:none;color:#8b949e;cursor:pointer;font-size:16px}
+.modal-body{overflow-y:auto;padding:12px 16px;flex:1}
+.field-row{display:flex;align-items:center;margin-bottom:8px;gap:8px}
+.field-row label{width:180px;color:#8b949e;font-size:11px;text-align:right;flex-shrink:0}
+.field-row input{flex:1;background:#0d1117;border:1px solid #374151;color:#e0e0e0;padding:4px 8px;border-radius:4px;font-size:11px;font-family:inherit}
+.field-row input:focus{outline:none;border-color:#2563eb}
+.modal-foot{padding:10px 16px;border-top:1px solid #374151;display:flex;gap:8px}
+.btn-save{background:#16a34a;border:none;color:#fff;padding:6px 16px;border-radius:4px;cursor:pointer;font-family:inherit;font-weight:700}
+.btn-cancel{background:#374151;border:none;color:#e0e0e0;padding:6px 14px;border-radius:4px;cursor:pointer;font-family:inherit}
+</style>
+</head>
+<body>
+
+<!-- top bar -->
+<div class="topbar">
+  <h1>🗄 DB Browser</h1>
+  <a href="/">← Dashboard</a>
+</div>
+
+<!-- quick queries -->
+<div class="quickbar">
+  <span>Quick:</span>
+  <button class="qbtn" onclick="quick('Open Today')">Open Today</button>
+  <button class="qbtn" onclick="quick('Closed Today')">Closed Today</button>
+  <button class="qbtn" onclick="quick('All Open')">All Open</button>
+  <button class="qbtn ghost" onclick="quick('Ghost Trades')">☠ Ghost Trades</button>
+  <button class="qbtn" onclick="quick('Capital Today')">Capital Today</button>
+  <button class="qbtn" onclick="quick('Settlement Queue')">Settlement Queue</button>
+  <button class="qbtn" onclick="quick('GridBot Open 4h')">GridBot Open 4h</button>
+  <button class="qbtn strat" onclick="quick('Strategies')">Strategies</button>
+  <button class="qbtn" onclick="quick('Daily P&L')">Daily P&amp;L</button>
+  <button class="qbtn" onclick="quick('Yesterday Closed')">Yesterday Closed</button>
+  <button class="qbtn" onclick="quick('Signal Reviews')">Signal Reviews</button>
+</div>
+
+<!-- search bar -->
+<div class="searchbar">
+  <label>Strategy:</label>
+  <input type="text" id="f-strategy" placeholder="e.g. grid_bot" style="width:110px">
+  <label>Status:</label>
+  <select id="f-status">
+    <option value="any">any</option>
+    <option value="open">open</option>
+    <option value="closed">closed</option>
+    <option value="pending">pending</option>
+    <option value="cancelled">cancelled</option>
+  </select>
+  <label>Time:</label>
+  <select id="f-time">
+    <option value="any">any</option>
+    <option value="last 1h">last 1h</option>
+    <option value="last 4h">last 4h</option>
+    <option value="last 8h">last 8h</option>
+    <option value="today">today</option>
+    <option value="yesterday">yesterday</option>
+    <option value="this week">this week</option>
+  </select>
+  <label>Symbol:</label>
+  <input type="text" id="f-symbol" placeholder="AAPL" style="width:80px">
+  <label>Broker:</label>
+  <select id="f-broker">
+    <option value="any">any</option>
+    <option value="alpaca">alpaca</option>
+    <option value="coinbase">coinbase</option>
+    <option value="kraken">kraken</option>
+    <option value="ibkr">ibkr</option>
+  </select>
+  <button class="sbtn" onclick="runSearch()">Search</button>
+  <button class="sbtn" style="background:#374151" onclick="refreshCurrent()">⟳ Refresh</button>
+</div>
+
+<!-- main -->
+<div class="main">
+  <!-- sidebar -->
+  <div class="sidebar">
+    <h3>Tables</h3>
+    <div id="tbl-list"></div>
+  </div>
+
+  <!-- grid -->
+  <div class="gridwrap">
+    <div class="gridtitle">
+      <span id="grid-title">Select a table or click a query button</span>
+      <div class="rowcount" id="row-count"></div>
+    </div>
+    <div class="tablecon" id="tablecon">
+      <table id="grid-table">
+        <thead id="grid-head"></thead>
+        <tbody id="grid-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- action bar -->
+<div class="actionbar">
+  <span>Actions:</span>
+  <button class="abtn edit" id="btn-edit"    onclick="doEdit()"           disabled>✏ Edit Row</button>
+  <button class="abtn flush" id="btn-flush"  onclick="doFlushGhost()"     disabled>☠ Flush Ghost</button>
+  <button class="abtn enable" id="btn-enable" onclick="doToggleStrategy(true)"  disabled>✔ Enable Strategy</button>
+  <button class="abtn disable" id="btn-disable" onclick="doToggleStrategy(false)" disabled>✖ Disable Strategy</button>
+  <span id="action-hint" style="margin-left:8px;color:#8b949e;font-size:11px">← select a row first</span>
+</div>
+
+<!-- status bar -->
+<div class="statusbar" id="statusbar">Ready</div>
+
+<!-- edit modal -->
+<div class="modal-bg" id="edit-modal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="modal-title">Edit Row</h3>
+      <button onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot">
+      <button class="btn-save" onclick="saveEdit()">Save</button>
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = (path, opts) => fetch(path, opts).then(r => r.json());
+
+// ── state ───────────────────────────────────────────────────────────────────
+let state = {
+  currentTable: null,
+  currentView:  null,
+  cols:         [],
+  rows:         [],   // display rows (no rowid)
+  rowids:       [],   // parallel rowid array
+  selectedIdx:  null,
+  sortCol:      null,
+  sortAsc:      true,
+};
+
+// ── table search config (mirrors Python) ────────────────────────────────────
+const TABLE_SEARCH = {
+  trades:           {strategy:1,status:1,symbol:1,broker:1,time_col:"entry_time"},
+  capital:          {time_col:"timestamp"},
+  daily_summaries:  {time_col:"trade_date"},
+  settlement_queue: {time_col:"created_at"},
+  ai_signal_reviews:{strategy:1,symbol:1,time_col:"timestamp"},
+  strategy_results: {strategy:1,time_col:"recorded_at"},
+  tax_ledger:       {symbol:1,time_col:"close_date"},
+  withdrawals:      {time_col:"timestamp"},
+  chat_actions:     {time_col:"timestamp"},
+  fund_events:      {time_col:"timestamp"},
+  bot_state:        {},
+  session_state:    {},
+};
+
+// ── quick queries ────────────────────────────────────────────────────────────
+const QUICK_SQL = {
+  "Open Today": {table:"trades",
+    sql:`SELECT trade_id,symbol,direction,status,strategy_name,entry_time,entry_price,stop_loss,take_profit,position_value,broker FROM trades WHERE status='open' AND DATE(entry_time)=DATE('now','localtime') ORDER BY entry_time DESC`},
+  "Closed Today": {table:"trades",
+    sql:`SELECT trade_id,symbol,direction,status,strategy_name,entry_time,exit_time,entry_price,exit_price,pnl,pnl_pct,exit_reason,broker FROM trades WHERE status='closed' AND DATE(exit_time)=DATE('now','localtime') ORDER BY exit_time DESC`},
+  "All Open": {table:"trades",
+    sql:`SELECT trade_id,symbol,direction,status,strategy_name,entry_time,entry_price,stop_loss,take_profit,position_value,broker FROM trades WHERE status='open' ORDER BY entry_time DESC`},
+  "Ghost Trades": {table:"trades",
+    sql:`SELECT trade_id,symbol,direction,status,strategy_name,entry_time,entry_price,position_value,broker,ROUND((julianday('now','localtime')-julianday(entry_time))*24,1) AS hours_open FROM trades WHERE status='open' AND entry_time<datetime('now','-8 hours','localtime') ORDER BY entry_time ASC`},
+  "Capital Today": {table:"capital",
+    sql:`SELECT timestamp,total_capital,available_cash,invested_value,daily_pnl,total_pnl,note FROM capital WHERE DATE(timestamp)=DATE('now','localtime') ORDER BY timestamp DESC`},
+  "Settlement Queue": {table:"settlement_queue",
+    sql:`SELECT * FROM settlement_queue ORDER BY rowid DESC LIMIT 300`},
+  "GridBot Open 4h": {table:"trades",
+    sql:`SELECT trade_id,symbol,direction,status,entry_time,entry_price,stop_loss,take_profit,position_value,broker FROM trades WHERE status='open' AND strategy_name LIKE '%grid%' AND entry_time>=datetime('now','-4 hours','localtime') ORDER BY entry_time DESC`},
+  "Strategies": {table:"_strategies",
+    sql:`SELECT replace(key,'strategy_','') AS strategy, UPPER(value) AS enabled FROM bot_state WHERE key LIKE 'strategy_%_enabled' ORDER BY strategy`},
+  "Daily P&L": {table:"daily_summaries",
+    sql:`SELECT trade_date,daily_pnl,daily_pnl_pct,total_trades,winning_trades,losing_trades,win_rate,largest_win,largest_loss,starting_capital,ending_capital FROM daily_summaries ORDER BY trade_date DESC LIMIT 60`},
+  "Yesterday Closed": {table:"trades",
+    sql:`SELECT trade_id,symbol,direction,strategy_name,entry_time,exit_time,entry_price,exit_price,pnl,pnl_pct,exit_reason,broker FROM trades WHERE status='closed' AND DATE(exit_time)=DATE('now','-1 day','localtime') ORDER BY exit_time DESC`},
+  "Signal Reviews": {table:"ai_signal_reviews",
+    sql:`SELECT timestamp,symbol,direction,strategy_name,signal_score,decision,confidence,reasoning FROM ai_signal_reviews ORDER BY timestamp DESC LIMIT 200`},
+};
+
+// ── init ─────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', loadTables);
+
+async function loadTables() {
+  const data = await API('/api/db/tables');
+  const list = document.getElementById('tbl-list');
+  list.innerHTML = '';
+  (data.tables || []).forEach(t => {
+    const d = document.createElement('div');
+    d.className = 'tbl-item';
+    d.dataset.table = t.name;
+    d.innerHTML = `<span class="tbl-name">${t.name}</span><span class="tbl-cnt">${t.rows.toLocaleString()}</span>`;
+    d.onclick = () => browseTable(t.name);
+    list.appendChild(d);
+  });
+}
+
+// ── browse table ─────────────────────────────────────────────────────────────
+async function browseTable(table) {
+  document.querySelectorAll('.tbl-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.table === table));
+  state.currentTable = table;
+  state.currentView  = null;
+  setStatus(`Loading ${table}...`);
+  const data = await API(`/api/db/browse?table=${encodeURIComponent(table)}&limit=500`);
+  if (data.error) { setStatus(data.error, true); return; }
+  renderResult(data.cols, data.rows, table, data.rows.length);
+  updateActionBar();
+}
+
+// ── quick queries ─────────────────────────────────────────────────────────────
+async function quick(label) {
+  const q = QUICK_SQL[label];
+  if (!q) return;
+  state.currentView  = label;
+  state.currentTable = q.table.startsWith('_') ? null : q.table;
+  setStatus(`Running: ${label}...`);
+  const data = await API(`/api/db/quick?q=${encodeURIComponent(label)}`);
+  if (data.error) { setStatus(data.error, true); return; }
+  renderResult(data.cols, data.rows, label, data.rows.length);
+  updateActionBar();
+}
+
+// ── search ────────────────────────────────────────────────────────────────────
+async function runSearch() {
+  const table = state.currentTable || 'trades';
+  const body  = {
+    table,
+    strategy: document.getElementById('f-strategy').value.trim(),
+    status:   document.getElementById('f-status').value,
+    time:     document.getElementById('f-time').value,
+    symbol:   document.getElementById('f-symbol').value.trim(),
+    broker:   document.getElementById('f-broker').value,
+  };
+  setStatus('Searching...');
+  const data = await API('/api/db/search', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  if (data.error) { setStatus(data.error, true); return; }
+  renderResult(data.cols, data.rows, `Search → ${table}`, data.rows.length);
+  state.currentView = null;
+  updateActionBar();
+}
+
+async function refreshCurrent() {
+  if (state.currentView) { await quick(state.currentView); }
+  else if (state.currentTable) { await browseTable(state.currentTable); }
+  await loadTables();
+}
+
+// ── render grid ───────────────────────────────────────────────────────────────
+function renderResult(cols, rows, title, count) {
+  // separate rowid column
+  const hasRowid = cols.length && cols[0] === 'rowid';
+  state.rowids = hasRowid ? rows.map(r => r[0]) : rows.map((_, i) => null);
+  state.cols   = hasRowid ? cols.slice(1) : cols;
+  state.rows   = hasRowid ? rows.map(r => r.slice(1)) : rows;
+  state.selectedIdx = null;
+  state.sortCol = null;
+
+  document.getElementById('grid-title').textContent = title;
+  document.getElementById('row-count').textContent  = `${count.toLocaleString()} rows`;
+
+  // header
+  const thead = document.getElementById('grid-head');
+  thead.innerHTML = '';
+  const tr = document.createElement('tr');
+  state.cols.forEach((c, i) => {
+    const th = document.createElement('th');
+    th.textContent = c;
+    th.onclick = () => sortBy(i);
+    tr.appendChild(th);
+  });
+  thead.appendChild(tr);
+
+  renderRows();
+  setStatus(`${count.toLocaleString()} rows  ·  ${title}`);
+}
+
+function renderRows() {
+  const tbody = document.getElementById('grid-body');
+  tbody.innerHTML = '';
+  state.rows.forEach((row, idx) => {
+    const tr = document.createElement('tr');
+    if (idx === state.selectedIdx) tr.classList.add('selected');
+    tr.onclick = () => selectRow(idx);
+    tr.ondblclick = () => doEdit();
+    row.forEach((val, ci) => {
+      const td = document.createElement('td');
+      const s  = val === null ? '' : String(val);
+      td.textContent = s;
+      td.title = s;
+      // colour pnl columns
+      const col = state.cols[ci] || '';
+      if ((col === 'pnl' || col === 'daily_pnl' || col === 'gain_loss') && s !== '') {
+        td.className = parseFloat(s) >= 0 ? 'pos' : 'neg';
+      }
+      if (col === 'enabled') {
+        td.style.color = s === 'TRUE' ? '#4ade80' : '#f87171';
+        td.style.fontWeight = '700';
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+function selectRow(idx) {
+  state.selectedIdx = idx;
+  document.querySelectorAll('#grid-body tr').forEach((tr, i) =>
+    tr.classList.toggle('selected', i === idx));
+  updateActionBar();
+}
+
+// ── sort ──────────────────────────────────────────────────────────────────────
+function sortBy(colIdx) {
+  if (state.sortCol === colIdx) { state.sortAsc = !state.sortAsc; }
+  else { state.sortCol = colIdx; state.sortAsc = true; }
+
+  const paired = state.rows.map((r, i) => [r, state.rowids[i]]);
+  paired.sort((a, b) => {
+    const av = a[0][colIdx], bv = b[0][colIdx];
+    const an = parseFloat(av), bn = parseFloat(bv);
+    const cmp = (!isNaN(an) && !isNaN(bn))
+      ? (an - bn)
+      : String(av||'').localeCompare(String(bv||''));
+    return state.sortAsc ? cmp : -cmp;
+  });
+  state.rows   = paired.map(p => p[0]);
+  state.rowids = paired.map(p => p[1]);
+  state.selectedIdx = null;
+
+  // update header highlight
+  document.querySelectorAll('#grid-head th').forEach((th, i) =>
+    th.classList.toggle('sorted', i === colIdx));
+
+  renderRows();
+}
+
+// ── action bar ────────────────────────────────────────────────────────────────
+function updateActionBar() {
+  const isStrat   = state.currentView === 'Strategies';
+  const isTrades  = state.currentTable === 'trades' ||
+    ['Open Today','Closed Today','All Open','Ghost Trades','GridBot Open 4h','Yesterday Closed'].includes(state.currentView);
+
+  document.getElementById('btn-flush').disabled   = !isTrades;
+  document.getElementById('btn-enable').disabled  = !isStrat;
+  document.getElementById('btn-disable').disabled = !isStrat;
+  document.getElementById('btn-edit').disabled    = false;
+}
+
+function getSelectedValues() {
+  const idx = state.selectedIdx;
+  if (idx === null) { setStatus('Select a row first', true); return null; }
+  const row    = state.rows[idx];
+  const rowid  = state.rowids[idx];
+  const colMap = {};
+  state.cols.forEach((c, i) => colMap[c] = row[i]);
+  return {idx, row, rowid, colMap};
+}
+
+// ── edit modal ────────────────────────────────────────────────────────────────
+let editState = {};
+
+function doEdit() {
+  const sel = getSelectedValues();
+  if (!sel) return;
+  const table = state.currentTable;
+  if (!table || table.startsWith('_')) {
+    alert('Browse a real table first (click one in the sidebar).');
+    return;
+  }
+  editState = {table, rowid: sel.rowid, colMap: sel.colMap};
+
+  document.getElementById('modal-title').textContent =
+    `Edit  ${table}  rowid=${sel.rowid ?? '(unknown)'}`;
+
+  const body = document.getElementById('modal-body');
+  body.innerHTML = '';
+  state.cols.forEach(col => {
+    const d  = document.createElement('div');
+    d.className = 'field-row';
+    d.innerHTML = `<label>${col}</label><input id="ef-${col}" value="${escHtml(sel.colMap[col] ?? '')}">`;
+    body.appendChild(d);
+  });
+
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+async function saveEdit() {
+  const table = editState.table;
+  let   rowid = editState.rowid;
+
+  // if rowid unknown, look it up via trade_id / id
+  if (rowid === null) {
+    for (const key of ['trade_id','id','key']) {
+      const val = editState.colMap[key];
+      if (val) {
+        const d = await API(`/api/db/browse?table=${encodeURIComponent(table)}&limit=1`);
+        // can't easily look up; just warn
+        break;
+      }
+    }
+    if (rowid === null) {
+      alert('Cannot determine row ID. Open the table directly from the sidebar to edit.');
+      return;
+    }
+  }
+
+  const promises = state.cols.map(col => {
+    const inp = document.getElementById(`ef-${col}`);
+    if (!inp) return Promise.resolve();
+    return API('/api/db/edit_row', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({table, rowid, col, value: inp.value})
+    });
+  });
+
+  const results = await Promise.all(promises);
+  const failed  = results.filter(r => r && !r.ok);
+  if (failed.length) {
+    alert('Some fields failed to save: ' + failed.map(r=>r.message).join(', '));
+  } else {
+    setStatus(`Saved rowid=${rowid}  ✓`, false, true);
+    closeModal();
+    refreshCurrent();
+  }
+}
+
+function closeModal() {
+  document.getElementById('edit-modal').classList.remove('open');
+}
+
+// ── flush ghost ───────────────────────────────────────────────────────────────
+async function doFlushGhost() {
+  const sel = getSelectedValues();
+  if (!sel) return;
+  const {colMap} = sel;
+  const trade_id = colMap.trade_id || '';
+  const symbol   = colMap.symbol   || '?';
+  const hours    = colMap.hours_open || '';
+  if (!trade_id) { alert('No trade_id found in selected row.'); return; }
+  if (colMap.status === 'closed') { alert(`${symbol} is already closed.`); return; }
+  if (!confirm(`Flush ghost trade?\n\n  Symbol: ${symbol}\n  Trade ID: ${trade_id}\n  Hours open: ${hours}\n\nThis marks the trade CLOSED in the DB (pnl=0).\nMake sure the position is already gone at the broker.`)) return;
+
+  const data = await API('/api/db/flush_ghost', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({trade_id, entry_price: colMap.entry_price || 0})
+  });
+  setStatus(data.ok ? `Flushed: ${symbol} (${trade_id})` : `Error: ${data.message}`, !data.ok, data.ok);
+  if (data.ok) refreshCurrent();
+}
+
+// ── strategy toggle ───────────────────────────────────────────────────────────
+async function doToggleStrategy(enable) {
+  const sel = getSelectedValues();
+  if (!sel) return;
+  const strategy = sel.colMap.strategy || '';
+  const key = `strategy_${strategy}`;
+  if (!key.endsWith('_enabled')) { alert('Select a row from the Strategies view.'); return; }
+  const name = strategy.replace('_enabled','');
+  if (!confirm(`${enable ? 'ENABLE' : 'DISABLE'} strategy '${name}'?\n\nThe bot picks up the change on its next cycle.`)) return;
+
+  const data = await API('/api/db/strategy_toggle', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({key, enabled: enable})
+  });
+  setStatus(data.ok ? data.message : `Error: ${data.message}`, !data.ok, data.ok);
+  if (data.ok) await quick('Strategies');
+}
+
+// ── status bar ────────────────────────────────────────────────────────────────
+function setStatus(msg, isErr=false, isOk=false) {
+  const el = document.getElementById('statusbar');
+  el.textContent = msg;
+  el.className = 'statusbar' + (isErr ? ' err' : isOk ? ' ok' : '');
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// close modal on bg click
+document.getElementById('edit-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+</script>
+</body>
+</html>
